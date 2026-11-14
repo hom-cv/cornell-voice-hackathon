@@ -7,7 +7,14 @@ private actor SpeechTranscriber {
     private var pipeline: WhisperKit?
     func transcribe(_ url: URL) async throws -> String {
         if pipeline == nil {
-            pipeline = try await WhisperKit(WhisperKitConfig(model: "base.en", verbose: false))
+            let assets = try await SpeechAssets().prepare()
+            pipeline = try await WhisperKit(WhisperKitConfig(
+                modelFolder: assets.model.path,
+                tokenizerFolder: assets.tokenizer,
+                verbose: false,
+                load: true,
+                download: false
+            ))
         }
         guard let pipeline else { throw VoiceError.unavailable }
         let results: [TranscriptionResult] = try await pipeline.transcribe(audioPath: url.path)

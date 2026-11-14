@@ -7,3 +7,7 @@ swiftc -module-cache-path "$PWD/.build/swift-cache" \
   Sources/Handoff/Models.swift Sources/Handoff/Store.swift Tests/HandoffTests/NoteTests.swift \
   -o .build/checks/NoteChecks
 .build/checks/NoteChecks
+swiftc -module-cache-path "$PWD/.build/swift-cache" \
+  Sources/Handoff/SpeechAssets.swift Tests/HandoffTests/SpeechAssetsTests.swift \
+  -o .build/checks/SpeechAssetChecks
+.build/checks/SpeechAssetChecks

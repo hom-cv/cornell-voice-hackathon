@@ -10,7 +10,7 @@ Requires macOS 14+, Swift 6, and Apple Silicon for the intended local speech set
 zsh scripts/run.sh
 ```
 
-The script builds and signs a local `.build/Handoff.app` with a microphone permission description, then opens it. The normal build downloads the pinned Argmax OSS WhisperKit dependency. The first transcription downloads the `base.en` speech model; subsequent transcription runs locally with cached model assets. Allow microphone access when prompted.
+The script builds and signs a local `.build/Handoff.app` with a microphone permission description, then opens it. The normal build downloads the pinned Argmax OSS WhisperKit dependency. The first transcription downloads the public `openai_whisper-base.en` speech model and its tokenizer without authentication; subsequent transcription runs locally with cached model assets. Allow microphone access when prompted.
 
 To try only the editor without downloading speech dependencies:
 
@@ -36,6 +36,8 @@ This iteration focuses on note-taking. It has no review panel, RAG workflow, han
 
 Voice is wired to [Argmax OSS WhisperKit](https://github.com/argmaxinc/argmax-oss-swift/tree/v0.18.0). No API key is used by this implementation. Argmax Pro is not configured yet; keep any key out of chat, source code, and Git.
 
+Public speech assets are cached under `~/Library/Application Support/InspectionHandoff/SpeechAssets`. Downloads do not read Hugging Face tokens or send an Authorization header, so unrelated cached credentials cannot cause authentication failures. The model source is [Argmax's public Core ML repository](https://huggingface.co/argmaxinc/whisperkit-coreml/tree/main/openai_whisper-base.en); the tokenizer comes from `openai/whisper-base.en`. HTTP failures are reported with their status code. Completed caches are usable offline; incomplete caches are downloaded again. This path has mock-network coverage; a live download is not verified in the restricted development environment.
+
 The text-only and full WhisperKit builds compile, and the note persistence checks pass. The bare executable passed a launch smoke test; launching the packaged `.app` failed in the restricted development environment. The microphone-to-transcript flow still needs a local permission grant and model download to validate end to end.
 
 ## Checks
@@ -44,6 +46,6 @@ The text-only and full WhisperKit builds compile, and the note persistence check
 zsh scripts/test.sh
 ```
 
-Checks cover note persistence, search, delete/undo, transcript routing, legacy workspace migration, and preservation of malformed files. No XCTest installation is required.
+Checks cover note persistence, search, delete/undo, transcript routing, legacy workspace migration, preservation of malformed files, credential-free asset requests, offline caching, partial-download recovery, and HTTP error reporting. No XCTest installation is required.
 
 See [PROJECT.md](PROJECT.md) for the shared product direction.
