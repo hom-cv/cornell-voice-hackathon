@@ -1,6 +1,6 @@
 import SwiftUI
 import AVFoundation
-#if canImport(WhisperKit)
+#if canImport(WhisperKit) && !HANDOFF_TEXT_ONLY
 @preconcurrency import WhisperKit
 
 private actor SpeechTranscriber {
@@ -39,7 +39,7 @@ final class VoiceRecorder: ObservableObject {
     @Published private(set) var error: String?
     private var recorder: AVAudioRecorder?
     private var audioURL: URL?
-    #if canImport(WhisperKit)
+    #if canImport(WhisperKit) && !HANDOFF_TEXT_ONLY
     private let transcriber = SpeechTranscriber()
     let isAvailable = true
     #else
@@ -95,7 +95,7 @@ final class VoiceRecorder: ObservableObject {
         defer { isBusy = false }
         do {
             guard let audioURL, let targetNoteID else { throw VoiceError.recording }
-            #if canImport(WhisperKit)
+            #if canImport(WhisperKit) && !HANDOFF_TEXT_ONLY
             let text = try await transcriber.transcribe(audioURL)
             guard !text.isEmpty else { throw VoiceError.empty }
             guard store.appendTranscript(text, to: targetNoteID) else { throw VoiceError.missingNote }

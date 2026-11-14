@@ -14,6 +14,6 @@ let package = Package(
     targets: [
         .executableTarget(name: "Handoff", dependencies: textOnly ? [] : [
             .product(name: "WhisperKit", package: "argmax-oss-swift")
-        ])
+        ], swiftSettings: textOnly ? [.define("HANDOFF_TEXT_ONLY")] : [])
     ]
 )

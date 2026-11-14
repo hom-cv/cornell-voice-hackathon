@@ -36,7 +36,7 @@ This iteration focuses on note-taking. It has no review panel, RAG workflow, han
 
 Voice is wired to [Argmax OSS WhisperKit](https://github.com/argmaxinc/argmax-oss-swift/tree/v0.18.0). No API key is used by this implementation. Argmax Pro is not configured yet; keep any key out of chat, source code, and Git.
 
-The text-only build and persistence checks can run without network access. The full WhisperKit build and microphone-to-transcript flow require dependency/model downloads and a local microphone permission grant; those have not been validated in the restricted development environment.
+The text-only and full WhisperKit builds compile, and the note persistence checks pass. The bare executable passed a launch smoke test; launching the packaged `.app` failed in the restricted development environment. The microphone-to-transcript flow still needs a local permission grant and model download to validate end to end.
 
 ## Checks
 
