@@ -1,18 +1,20 @@
 import { useEffect, useState } from 'react'
 import Button from '@mui/material/Button'
+import HandoffHistory from '@/components/HandoffHistory'
 import AppHeader from '@/components/AppHeader'
 import NimbusMascot from '@/components/NimbusMascot'
 import { api } from '@/api/client'
 import type { Employee } from '@/data/employees'
 import type { AircraftBoard, WorkStatus, WorkItem } from '@/data/board'
+import { needsFollowUp } from '@/data/board'
 import styles from './ShiftBoardPage.module.css'
 
-const labels: Record<WorkStatus, string> = { not_started: 'Not started', open: 'Open · carried over', in_progress: 'In progress', blocked: 'Blocked', done: 'Done' }
+const labels: Record<WorkStatus, string> = { not_started: 'Not started', open: 'Needs follow-up', in_progress: 'In progress', blocked: 'Blocked', done: 'Done' }
 const progressOrder: WorkStatus[] = ['done', 'in_progress', 'blocked', 'open', 'not_started']
 const filterOrder: ('all' | WorkStatus)[] = ['all', 'open', 'not_started', 'in_progress', 'blocked', 'done']
 
-export default function ShiftBoardPage({ registration, employee, onSignOut, onSwitchAircraft, onCapture, onPrepareHandoff }: {
-  onPrepareHandoff: () => void; registration: string; employee: Employee; onSignOut: () => void; onSwitchAircraft: () => void; onCapture: (item?: WorkItem, ownerName?: string) => void
+export default function ShiftBoardPage({ registration, employee, onSignOut, onSwitchAircraft, onCapture, onPrepareHandoff, onOpenHandoff }: {
+  onOpenHandoff: (id: string) => void; onPrepareHandoff: () => void; registration: string; employee: Employee; onSignOut: () => void; onSwitchAircraft: () => void; onCapture: (item?: WorkItem, ownerName?: string) => void
 }) {
   const [board, setBoard] = useState<AircraftBoard | null>(null)
   const [filter, setFilter] = useState<'all' | WorkStatus>('all')
@@ -32,9 +34,7 @@ export default function ShiftBoardPage({ registration, employee, onSignOut, onSw
 
   const counts = { not_started: 0, open: 0, in_progress: 0, blocked: 0, done: 0 }
   board?.items.forEach((item) => counts[item.status]++)
-  const handoffItems = board?.items.filter((item) => item.handoffReviewRequired) ?? []
-  const leftOpen = board?.items.filter((item) => item.leftOpen) ?? []
-  const reviewItems = board?.items.filter((item) => item.handoffReviewRequired || item.leftOpen) ?? []
+  const reviewItems = board?.items.filter(needsFollowUp) ?? []
   const activeReviewIndex = reviewItems.length ? reviewIndex % reviewItems.length : 0
   const reviewItem = reviewItems[activeReviewIndex]
   const visibleItems = board?.items.filter((item) => filter === 'all' || item.status === filter) ?? []
@@ -47,7 +47,7 @@ export default function ShiftBoardPage({ registration, employee, onSignOut, onSw
           <section className={styles.briefing} aria-label="Nimbus briefing">
             <div className={styles.mascot}><NimbusMascot /></div>
             <div className={`${styles.speech} ${reviewItem ? styles.caution : ''}`} role="region" aria-roledescription={reviewItem ? 'carousel' : undefined} aria-label="Tasks needing review">
-              <span className={styles.eyebrow}>NIMBUS · {reviewItem ? 'REVIEW BEFORE HANDOFF' : 'INSPECTION BOARD'}</span>
+              <span className={styles.eyebrow}>NIMBUS · {reviewItem ? 'NEEDS FOLLOW-UP' : 'INSPECTION BOARD'}</span>
               {reviewItem ? <>
                 <div aria-live="polite" aria-atomic="true">
                   <div role="group" aria-roledescription="slide" aria-label={`${activeReviewIndex + 1} of ${reviewItems.length}`}>
@@ -68,7 +68,7 @@ export default function ShiftBoardPage({ registration, employee, onSignOut, onSw
                   </div>
                 </div>
               </> : <>
-                <h1>No tasks awaiting review, {employee.name}.</h1>
+                <h1>No tasks needing follow-up, {employee.name}.</h1>
                 <p>{board.items.length ? `${counts.done} of ${board.items.length} work items are complete.` : 'No inspection work items have been added to this aircraft yet.'}</p>
                 <Button variant="contained" onClick={() => onCapture()} sx={{ mt: 2 }}>Start an inspection</Button>
               </>}
@@ -86,25 +86,14 @@ export default function ShiftBoardPage({ registration, employee, onSignOut, onSw
             </div>
             <div className={styles.legend}>{progressOrder.map((status) => <span key={status}><i className={styles[status]} />{labels[status]} <strong>{counts[status]}</strong></span>)}</div>
           </section>
-          {handoffItems.length > 0 && <section className={styles.handoffReview} aria-label="Carried-over items to review">
-            <h2>Review before the next handoff · {handoffItems.length} items</h2>
-            <p>Carried over from the previous handoff. Completing work does not automatically clear this review reminder.</p>
-            <div className={styles.openGrid}>{handoffItems.map((item) => <article key={item.id}>
-              <h3><button className={styles.taskLink} onClick={() => onCapture(item, board.employees.find((person) => person.id === item.assigneeId)?.name ?? 'Unassigned')}>{item.title}</button></h3>
-              <p>{item.area}</p><p><strong>Current condition:</strong> {item.stoppedAt || 'Needs review.'}</p>
-            </article>)}</div>
-          </section>}
-          {leftOpen.length > 0 && <section className={styles.leftOpen} aria-label="Unresolved physical conditions">
-            <h2><span aria-hidden="true">⚠</span> Unresolved physical conditions · {leftOpen.length} items</h2>
-            <div className={styles.openGrid}>{leftOpen.map((item) => <article key={item.id}><h3>{item.title}</h3><p>{item.area}</p><p className={styles.stopped}><strong>Stopped at:</strong> {item.stoppedAt || 'No stopping point recorded.'}</p></article>)}</div>
-          </section>}
+          <HandoffHistory registration={registration} onOpen={onOpenHandoff} />
           <section className={styles.tasks} aria-label="Inspection work items">
             <div className={styles.taskHeader}><h2>Work items</h2><Button variant="contained" onClick={onPrepareHandoff}>Prepare handoff</Button><div className={styles.filters} aria-label="Filter by status">{filterOrder.map((status) => <button key={status} aria-pressed={filter === status} onClick={() => setFilter(status)} className={filter === status ? styles.activeFilter : ''}>{status === 'all' ? 'All' : labels[status]}</button>)}</div></div>
             <div aria-live="polite">
               {visibleItems.length === 0 && <p className={styles.empty}>{board.items.length === 0 ? 'No work items have been added yet.' : `No ${labels[filter as WorkStatus]?.toLowerCase()} work items.`}</p>}
               {visibleItems.map((item) => <article className={styles.task} key={item.id}>
                 <span className={styles.taskIcon} aria-hidden="true">{item.leftOpen ? '⚠' : item.status === 'done' ? '✓' : '○'}</span>
-                <div className={styles.taskContent}><h3><button className={styles.taskLink} onClick={() => onCapture(item, board.employees.find((person) => person.id === item.assigneeId)?.name ?? "Unassigned")}>{item.title}</button></h3><p>{item.area} · {board.employees.find((person) => person.id === item.assigneeId)?.name ?? 'Unassigned'}</p>{item.handoffReviewRequired && <p className={styles.reviewLabel}>Carried over · review before handoff</p>}<p className={styles.taskNote}><strong>{item.status === 'done' ? 'Completed:' : 'Stopped at:'}</strong> {item.stoppedAt || 'No stopping point recorded.'}</p></div>
+                <div className={styles.taskContent}><h3><button className={styles.taskLink} onClick={() => onCapture(item, board.employees.find((person) => person.id === item.assigneeId)?.name ?? "Unassigned")}>{item.title}</button></h3><p>{item.area} · {board.employees.find((person) => person.id === item.assigneeId)?.name ?? 'Unassigned'}</p>{needsFollowUp(item) && <p className={styles.reviewLabel}>Needs follow-up by the next shift</p>}<p className={styles.taskNote}><strong>{item.status === 'done' ? 'Completed:' : 'Stopped at:'}</strong> {item.stoppedAt || 'No stopping point recorded.'}</p></div>
                 <span className={`${styles.badge} ${styles[`${item.status}Badge`]}`}>{labels[item.status]}</span>
               </article>)}
             </div>

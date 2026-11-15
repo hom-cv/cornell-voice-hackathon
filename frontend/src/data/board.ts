@@ -26,3 +26,7 @@ export interface AircraftBoard {
 export type InspectionDraft = Omit<WorkItem, 'id' | 'assigneeId'>
 export interface ClarificationAnswer { question: string; answer: string }
 export interface CaptureResult { transcript: string; draft: InspectionDraft; warnings: string[]; questions: string[] }
+
+export function needsFollowUp(item: Pick<WorkItem, 'status' | 'leftOpen' | 'handoffReviewRequired'>): boolean {
+  return item.status !== 'done' || item.leftOpen || item.handoffReviewRequired
+}

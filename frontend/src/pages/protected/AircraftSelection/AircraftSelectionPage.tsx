@@ -102,8 +102,7 @@ export default function AircraftSelectionPage({ employee, onSignOut, onSelectAir
               <span className={styles.work}>{visit.work}</span>
               <span className={styles.due}>Due back in service <strong>{visit.due}</strong></span>
               <span className={styles.badges}>
-                {visit.handoffItems > 0 && <span className={styles.alert}>{visit.handoffItems} to review before handoff</span>}
-                {visit.openItems > 0 && <span className={styles.alert}>⚠ {visit.openItems} physical conditions unresolved</span>}
+                {visit.handoffItems > 0 && <span className={styles.alert}>{visit.handoffItems} need follow-up</span>}
                 <span className={styles.progress}>{visit.completedItems} of {visit.totalItems} items done</span>
               </span>
             </button>

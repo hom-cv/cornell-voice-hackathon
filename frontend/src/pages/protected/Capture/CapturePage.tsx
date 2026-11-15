@@ -1,3 +1,4 @@
+import { AppearanceControl } from '@/components/AppearanceProvider'
 import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
 import Button from '@mui/material/Button'
@@ -10,11 +11,16 @@ import TextField from '@mui/material/TextField'
 import MenuItem from '@mui/material/MenuItem'
 import Checkbox from '@mui/material/Checkbox'
 import FormControlLabel from '@mui/material/FormControlLabel'
+import DraftRecoveryNotice from '@/components/DraftRecoveryNotice'
+import { useDraftRecovery } from '@/hooks/useDraftRecovery'
+import { InspectionChangeReview } from '@/components/InspectionChangeReview'
 import NimbusMascot from '@/components/NimbusMascot'
 import { useAudioRecorder } from '@/hooks/useAudioRecorder'
+import { useNavigationGuard } from '@/routing/navigation'
 import { api, ApiError } from '@/api/client'
 import type { Employee } from '@/data/employees'
 import type { CaptureResult, InspectionDraft, WorkItem, ClarificationAnswer } from '@/data/board'
+import { needsFollowUp } from '@/data/board'
 import styles from './CapturePage.module.css'
 
 const emptyDraft = (): InspectionDraft => ({ title: '', area: '', status: 'not_started', stoppedAt: '', leftOpen: false, handoffReviewRequired: false, manualReference: '', found: '', workDone: '', nextAction: '', photoData: '' })
@@ -22,12 +28,33 @@ function itemDraft(item: WorkItem | null): InspectionDraft {
   if (!item) return emptyDraft()
   return { title: item.title, area: item.area, status: item.status, stoppedAt: item.stoppedAt, leftOpen: item.leftOpen, handoffReviewRequired: item.handoffReviewRequired, manualReference: item.manualReference, found: item.found, workDone: item.workDone, nextAction: item.nextAction, photoData: item.photoData }
 }
-const statuses = { not_started: 'Not started', open: 'Open · carried over', in_progress: 'In progress', blocked: 'Blocked', done: 'Done' }
+const statuses = { not_started: 'Not started', open: 'Needs follow-up', in_progress: 'In progress', blocked: 'Blocked', done: 'Done' }
 const newExample = 'I found a loose seat cover in the front row. I checked it and took a photo. The cover is still loose. Next, replace the cover. Keep this task open.'
 
-export default function CapturePage({ registration, employee, initialItem, ownerName, onBack }: {
-  registration: string; employee: Employee; initialItem: WorkItem | null; ownerName: string; onBack: () => void
+type RecoveredInspection = {
+  draft: Omit<InspectionDraft, 'photoData'>; transcript: string; answers: string[]
+  clarification: { transcript: string; draft: Omit<InspectionDraft, 'photoData'>; questions: string[] } | null
+}
+function recoverableDraft(draft: InspectionDraft) {
+  const { photoData: omitted, ...fields } = draft
+  void omitted
+  return fields
+}
+function validRecoveredInspection(value: unknown): value is RecoveredInspection {
+  if (!value || typeof value !== 'object') return false
+  const data = value as RecoveredInspection
+  const validDraft = (draft: RecoveredInspection['draft']) => draft && typeof draft === 'object' &&
+    ['title', 'area', 'stoppedAt', 'manualReference', 'found', 'workDone', 'nextAction'].every((key) => typeof (draft as unknown as Record<string, unknown>)[key] === 'string') &&
+    Object.hasOwn(statuses, draft.status) && typeof draft.leftOpen === 'boolean' && typeof draft.handoffReviewRequired === 'boolean'
+  return Boolean(validDraft(data.draft) && typeof data.transcript === 'string' && Array.isArray(data.answers) && data.answers.every((answer) => typeof answer === 'string') &&
+    (data.clarification === null || (data.clarification && typeof data.clarification.transcript === 'string' && validDraft(data.clarification.draft) && Array.isArray(data.clarification.questions) && data.clarification.questions.length <= 2 && data.clarification.questions.every((question) => typeof question === 'string') && data.answers.length === data.clarification.questions.length)))
+}
+
+export default function CapturePage({ registration, employee, initialItem, ownerName, onBack, onSaved }: {
+  registration: string; employee: Employee; initialItem: WorkItem | null; ownerName: string; onBack: () => void; onSaved?: (id: string) => void
 }) {
+  const [draftBase, setDraftBase] = useState(() => JSON.stringify(recoverableDraft(itemDraft(initialItem))))
+  const [aiPreview, setAiPreview] = useState<{ result: CaptureResult; before: InspectionDraft } | null>(null)
   const [draft, setDraft] = useState<InspectionDraft>(() => itemDraft(initialItem))
   const [itemId, setItemId] = useState(initialItem?.id)
   const owner = ownerName
@@ -57,7 +84,20 @@ export default function CapturePage({ registration, employee, initialItem, owner
     return () => window.removeEventListener('beforeunload', prevent)
   }, [dirty])
 
-  function applyCapture(result: CaptureResult, answered = false) {
+  const recovery = useDraftRecovery<RecoveredInspection>({
+    scope: { employeeId: employee.id, aircraftId: registration, kind: 'inspection', itemId },
+    value: { draft: recoverableDraft(draft), transcript, answers, clarification: clarification ? { ...clarification, draft: recoverableDraft(clarification.draft) } : null },
+    dirty, baseSignature: draftBase,
+    omittedPhotos: Boolean(draft.photoData && draft.photoData !== initialItem?.photoData),
+    validate: validRecoveredInspection,
+    onRestore: (data) => {
+      setDraft({ ...data.draft, photoData: initialItem?.photoData ?? '' }); setTranscript(data.transcript)
+      setAnswers(data.answers); setClarification(data.clarification ? { ...data.clarification, draft: { ...data.clarification.draft, photoData: initialItem?.photoData ?? '' } } : null)
+      setDirty(true); setSaved(false)
+    },
+  })
+
+  function applyCapture(result: CaptureResult, answered = false, approved = false) {
     setTranscript(result.transcript)
     setWarnings(result.warnings)
     setDirty(true); setSaved(false)
@@ -73,6 +113,11 @@ export default function CapturePage({ registration, employee, initialItem, owner
       // Keep the form untouched until the single clarification round is answered.
       setClarification({ transcript: result.transcript, draft: { ...draft }, questions: questions.slice(0, 2) })
       setAnswers(questions.slice(0, 2).map(() => ''))
+      return
+    }
+    if (!approved) {
+      setAiPreview({ result, before: { ...draft } })
+      setUpdateSummary('Review Nimbus’s proposed changes before using them.')
       return
     }
     const labels: Partial<Record<keyof InspectionDraft, string>> = {
@@ -149,14 +194,16 @@ export default function CapturePage({ registration, employee, initialItem, owner
     } catch (failure) {
       if (alive.current) {
         setError(failure instanceof Error ? failure.message : 'Unable to process this recording.')
-        if (failure instanceof ApiError && failure.transcript) setTranscript(failure.transcript)
+        if (failure instanceof ApiError && failure.transcript) { setTranscript(failure.transcript); setDirty(true); setSaved(false) }
       }
     } finally { if (alive.current) setProcessing(false) }
   }
   const recorder = useAudioRecorder(processAudio)
   const locked = processing || saving || readingPhoto || recorder.recording || recorder.preparing
 
-  const formLocked = locked || clarification !== null
+  useNavigationGuard(dirty || recorder.recording || recorder.preparing || processing || saving, 'Leave this inspection? Unsaved changes or recordings will be lost.')
+
+  const formLocked = locked || clarification !== null || aiPreview !== null || recovery.pending !== null
 
   function startAnswerRecording(index: number) {
     if (locked || !clarification) return
@@ -184,6 +231,11 @@ export default function CapturePage({ registration, employee, initialItem, owner
     setDirty(true); setSaved(false); setError('')
   }
 
+  function changeFollowUp(checked: boolean) {
+    setDraft((current) => ({ ...current, handoffReviewRequired: checked, leftOpen: checked ? current.leftOpen : false }))
+    setDirty(true); setSaved(false); setError('')
+  }
+
   async function fillFromText() {
     if (!transcript.trim() || formLocked) return
     setProcessing(true); setError(''); setUpdateSummary('')
@@ -203,9 +255,12 @@ export default function CapturePage({ registration, employee, initialItem, owner
     try {
       const item = await api.saveItem(registration, draft, itemId)
       if (alive.current) {
+        recovery.clear()
+        setDraftBase(JSON.stringify(recoverableDraft(itemDraft(item))))
         setDraft(itemDraft(item)); setItemId(item.id)
         setSaved(true); setDirty(false)
         setSaveDialogOpen(true)
+        onSaved?.(item.id)
       }
     } catch (failure) {
       if (alive.current) setError(failure instanceof Error ? failure.message : 'Unable to save this inspection.')
@@ -213,8 +268,7 @@ export default function CapturePage({ registration, employee, initialItem, owner
   }
 
   function back() {
-    if ((dirty || recorder.recording) && !window.confirm('Leave this draft? Unsaved changes will be lost.')) return
-    cancelRecording(); onBack()
+    onBack()
   }
 
   function addPhoto(event: ChangeEvent<HTMLInputElement>) {
@@ -239,6 +293,7 @@ export default function CapturePage({ registration, employee, initialItem, owner
       <button onClick={back} disabled={processing || saving || readingPhoto}><span aria-hidden="true">←</span> Shift board</button>
       <span className={styles.divider}>/</span><strong>{registration} · Talk to Nimbus</strong>
       <span className={styles.employee}>{employee.name} · Employee</span>
+      <AppearanceControl />
     </header>
     <main className={styles.layout}>
       <aside className={styles.assistant}>
@@ -292,7 +347,7 @@ export default function CapturePage({ registration, employee, initialItem, owner
         <p className={styles.privacy}>WhisperKit transcribes your audio locally. Bonsai drafts the fields. Review everything before saving.</p>
       </aside>
       <form className={styles.form} onSubmit={save}>
-        <div className={styles.formHeader}><div><h2>{itemId ? 'Inspection card' : 'New inspection card'}</h2><span className={styles.tag}>{saved ? 'Saved' : filledByVoice ? 'Drafted by Bonsai · review before saving' : 'Draft · ready for your notes'}</span></div>{draft.leftOpen && <span className={styles.warningTag}>Something is left open on the aircraft</span>}</div>
+        <div className={styles.formHeader}><div><h2>{itemId ? 'Inspection card' : 'New inspection card'}</h2><span className={styles.tag}>{saved ? 'Saved' : filledByVoice ? 'Drafted by Bonsai · review before saving' : 'Draft · ready for your notes'}</span></div>{needsFollowUp(draft) && <span className={styles.warningTag}>Needs follow-up</span>}</div>
         <fieldset disabled={formLocked} className={styles.fields}>
           <TextField required fullWidth label="Inspection title" value={draft.title} onChange={(event) => change('title', event.target.value)} placeholder="For example, loose seat cover" slotProps={{ htmlInput: { maxLength: 300 } }} />
           <div className={styles.twoColumns}>
@@ -305,16 +360,24 @@ export default function CapturePage({ registration, employee, initialItem, owner
           <TextField multiline minRows={2} label="What was done" value={draft.workDone} onChange={(event) => change('workDone', event.target.value)} placeholder="What have you checked or changed so far?" slotProps={{ htmlInput: { maxLength: 2000 } }} />
           <TextField multiline minRows={2} label="Exact stopping point" value={draft.stoppedAt} onChange={(event) => change('stoppedAt', event.target.value)} placeholder="What state did you leave it in?" className={draft.leftOpen ? styles.stoppingPoint : ''} slotProps={{ htmlInput: { maxLength: 1000 } }} />
           <TextField multiline minRows={2} label="Next action" value={draft.nextAction} onChange={(event) => change('nextAction', event.target.value)} placeholder="What should happen next?" slotProps={{ htmlInput: { maxLength: 1000 } }} />
-          <FormControlLabel control={<Checkbox checked={draft.leftOpen} onChange={(event) => change('leftOpen', event.target.checked)} />} label="A physical condition is unresolved (for example, a cover is off)" />
           <div>
-            <FormControlLabel control={<Checkbox disabled={formLocked || draft.status === 'open'} checked={draft.handoffReviewRequired} onChange={(event) => change('handoffReviewRequired', event.target.checked)} />} label="Carried over · review before the next handoff" />
-            <p className={styles.note}>{draft.status === 'open' ? 'Open means carried over from the last handoff. After reviewing it, set its current work status and clear this reminder.' : 'Keep this reminder until you have reviewed the carried-over item for the next handoff.'}</p>
+            <FormControlLabel control={<Checkbox disabled={formLocked || draft.status !== 'done'} checked={needsFollowUp(draft)} onChange={(event) => changeFollowUp(event.target.checked)} />} label="Needs follow-up by the next shift" />
+            <p className={styles.note}>{draft.status !== 'done' ? 'Unfinished work automatically needs follow-up. Describe what they need to check or finish in Next action.' : 'Describe what they need to check or finish in Next action.'}</p>
           </div>
           <div className={styles.photos}><strong>Photo <span>(optional)</span></strong>{draft.photoData ? <div className={styles.photoPreview}><img src={draft.photoData} alt="Inspection attachment" /><Button onClick={() => change('photoData', '')}>Remove photo</Button></div> : <label className={styles.photoUpload}><span aria-hidden="true">＋</span>Add a photo<input type="file" accept="image/jpeg,image/png,image/webp" onChange={addPhoto} disabled={formLocked} /></label>}<small>One photo, up to 2 MB.</small></div>
         </fieldset>
         <footer className={styles.formFooter}><p>Edit any field, or record another update to correct the draft.</p><Button type="submit" variant="contained" disabled={formLocked || (saved && !dirty)}>{saving ? 'Saving…' : 'Save inspection'}</Button></footer>
       </form>
     </main>
+    <DraftRecoveryNotice recovery={recovery} />
+    <Dialog open={aiPreview !== null} onClose={() => setAiPreview(null)} fullWidth maxWidth="md" aria-labelledby="ai-review-title">
+      <DialogTitle id="ai-review-title">Review Nimbus’s changes</DialogTitle>
+      <DialogContent>
+        <DialogContentText>Check the changes below. Using them updates your draft; Save inspection saves it to the aircraft.</DialogContentText>
+        {aiPreview && <InspectionChangeReview changes={[{ taskId: itemId ?? 'new', title: aiPreview.result.draft.title || draft.title || 'Inspection', before: aiPreview.before, after: aiPreview.result.draft }]} />}
+      </DialogContent>
+      <DialogActions><Button onClick={() => setAiPreview(null)}>Keep my draft</Button><Button variant="contained" onClick={() => { if (aiPreview) { applyCapture(aiPreview.result, false, true); setAiPreview(null) } }}>Use these changes</Button></DialogActions>
+    </Dialog>
     <Dialog
       open={saveDialogOpen}
       onClose={() => setSaveDialogOpen(false)}

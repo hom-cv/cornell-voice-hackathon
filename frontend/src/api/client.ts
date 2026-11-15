@@ -4,31 +4,51 @@ import type { AircraftVisit } from '@/data/aircraft'
 
 export class ApiError extends Error {
   transcript?: string
-  constructor(message: string, transcript?: string) {
+  status?: number
+  constructor(message: string, transcript?: string, status?: number) {
     super(message)
     this.transcript = transcript
+    this.status = status
   }
 }
 
-let token: string | null = null
+const sessionKey = 'nimbus.session'
+function storedSession(): string | null {
+  try { return localStorage.getItem(sessionKey) } catch { return null }
+}
+let token: string | null = storedSession()
+export function hasSession() { return Boolean(token) }
+function setSession(value: string | null) {
+  token = value
+  try {
+    if (value) localStorage.setItem(sessionKey, value)
+    else localStorage.removeItem(sessionKey)
+  } catch { /* Continue with an in-memory session when storage is unavailable. */ }
+}
+window.addEventListener('storage', (event) => {
+  if (event.key !== sessionKey && event.key !== null) return
+  token = storedSession()
+  window.dispatchEvent(new Event('nimbus:session-changed'))
+})
 const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const requestToken = token
   const response = await fetch(`${baseUrl}${path}`, {
     ...options,
     headers: {
       ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(requestToken ? { Authorization: `Bearer ${requestToken}` } : {}),
       ...options.headers,
     },
   })
   if (!response.ok) {
-    if (response.status === 401 && token) {
-      token = null
+    if (response.status === 401 && requestToken && requestToken === token) {
+      setSession(null)
       window.dispatchEvent(new Event('nimbus:session-expired'))
     }
     const body = await response.json().catch(() => null)
-    throw new ApiError(typeof body?.detail === 'string' ? body.detail : 'Check the form fields and try again.', typeof body?.transcript === 'string' ? body.transcript : undefined)
+    throw new ApiError(typeof body?.detail === 'string' ? body.detail : 'Check the form fields and try again.', typeof body?.transcript === 'string' ? body.transcript : undefined, response.status)
   }
   return response.status === 204 ? undefined as T : response.json()
 }
@@ -58,13 +78,27 @@ export interface HandoffRecord {
   completedAt: string | null
 }
 
+export interface HandoffPreview {
+  previewId: string
+  changes: { taskId: string; title: string; before: InspectionDraft; after: InspectionDraft }[]
+  expiresAt: string
+}
+export interface HandoffSummary {
+  id: string; outgoing: Employee; incoming: Employee | null
+  status: 'draft' | 'confirmed' | 'completed'; createdAt: string; completedAt: string | null
+}
 export type HandoffOut = HandoffRecord
 
 export const api = {
+  me: () => request<Employee>('/auth/me'),
   fillHandoffAnswers: (registration: string, transcript: string, questions: (HandoffQuestion & { answer: string })[]) =>
     request<{ answers: string[]; transcript: string }>(`/aircraft/${encodeURIComponent(registration)}/handoff/answers/text`, { method: 'POST', body: JSON.stringify({ transcript, questions }) }),
-  startHandoff: (registration: string, answers: HandoffAnswer[]) =>
-    request<HandoffRecord>(`/aircraft/${encodeURIComponent(registration)}/handoff/start`, { method: 'POST', body: JSON.stringify({ answers }) }),
+  previewHandoff: (registration: string, answers: HandoffAnswer[]) =>
+    request<HandoffPreview>(`/aircraft/${encodeURIComponent(registration)}/handoff/preview`, { method: 'POST', body: JSON.stringify({ answers }) }),
+  handoffHistory: (registration: string) =>
+    request<HandoffSummary[]>(`/aircraft/${encodeURIComponent(registration)}/handoff`),
+  startHandoff: (registration: string, answers: HandoffAnswer[], previewId?: string) =>
+    request<HandoffRecord>(`/aircraft/${encodeURIComponent(registration)}/handoff/start`, { method: 'POST', body: JSON.stringify({ answers, previewId }) }),
   getHandoff: (registration: string, id: string) =>
     request<HandoffRecord>(`/aircraft/${encodeURIComponent(registration)}/handoff/${encodeURIComponent(id)}`),
   verifyHandoff: (registration: string, id: string, userId: string, pin: string) =>
@@ -84,12 +118,12 @@ export const api = {
     const result = await request<{ token: string; employee: Employee }>('/auth/login', {
       method: 'POST', body: JSON.stringify({ user_id: userId, pin }),
     })
-    token = result.token
+    setSession(result.token)
     return result.employee
   },
   async logout() {
     await request<void>('/auth/logout', { method: 'POST' })
-    token = null
+    setSession(null)
   },
   saveItem: (registration: string, draft: InspectionDraft, id?: string) =>
     request<WorkItem>(`/aircraft/${encodeURIComponent(registration)}/items${id ? `/${encodeURIComponent(id)}` : ''}`, { method: id ? 'PUT' : 'POST', body: JSON.stringify(draft) }),

@@ -1,3 +1,4 @@
+import { AppearanceControl } from '@/components/AppearanceProvider'
 import { useCurrentTime } from '@/hooks/useCurrentTime'
 import Button from '@mui/material/Button'
 import type { Employee } from '@/data/employees'
@@ -7,7 +8,7 @@ export default function AppHeader({ employee, onSignOut, aircraft, onSwitchAircr
   const now = useCurrentTime()
 
   return (
-    <header className={`${styles.header} ${aircraft ? styles.dark : ""}`}>
+    <header className={styles.header}>
       <a className={styles.brand} href="/" aria-label="Nimbus home">
         <span className={styles.mark} aria-hidden="true">☁</span>
         Nimbus
@@ -18,6 +19,7 @@ export default function AppHeader({ employee, onSignOut, aircraft, onSwitchAircr
         <span className={styles.time}>{now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span>
       </time>
       {employee && <div className={styles.account}><span>{employee.name} · Employee</span>{onSwitchAircraft && <Button variant="outlined" onClick={onSwitchAircraft}>Switch aircraft</Button>}<Button variant="outlined" onClick={onSignOut}>Log out</Button></div>}
+      <AppearanceControl />
     </header>
   )
 }
