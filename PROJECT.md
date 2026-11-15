@@ -1,22 +1,19 @@
-# Aircraft Inspection Handoff App
+# Nimbus aircraft inspection handoff
 
-## Goal
-Build a native, notes-first application that helps aircraft inspection workers create clear shift handoff documents faster, so incoming workers understand the current state and outstanding work.
+## Current app
+React/TypeScript frontend with a FastAPI/PostgreSQL backend and Alembic migrations.
+Employee PIN sign-in and aircraft assignments limit access. Hom and Peach are the
+demo employees. Voice uses local Argmax OSS WhisperKit; local Bonsai fills forms.
 
-## Core workflow
-- Capture inspection observations, completed work, and pending action items via voice.
+## Workflow
+Capture and edit inspection tasks by voice or text. Clarify ambiguous updates in
+one round of up to two questions. Before handoff, review all tasks and ask at most
+three questions; a single recording can answer the set. Apply reviewed answers to
+the tasks and create a saved handoff snapshot. Verify the incoming employee's PIN,
+walk through attention items together, confirm, finish, and log out.
 
-## Product principles
-- Keep note-taking fast and familiar.
-- Keep the UI simple stupid, do not introduce multi-layered AI unless necessary
-
-## Current prototype
-- Initial implementation assumes macOS + SwiftUI for speed; the final target platform remains open.
-- Includes local notes
-
-## Scope of this reference
-This is the high-level source of truth for contributors and agents. Keep it brief, update it as decisions are made, and do not treat open decisions as settled requirements.
-
-## AI Integreation
-- Must use Bonsai 2B, 4B, or 9B
-- Uses Argmax OSS for voice recognition
+## Product decisions
+Keep wording clear and recording fast. Open means carried over for review; physical
+open conditions are separate. Never infer maintenance approval. Use Alembic for
+schema and seed data; autogenerate schema changes. Validate flows end to end without
+adding test files. The original native prototype is retained with NATIVE_README.md.

@@ -1,0 +1,27 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+fastapi = {extras = ["standard"], version = "==0.128.*"}
+pydantic-settings = "2.12.*"
+sqlalchemy = "2.0.*"
+alembic = "1.17.*"
+psycopg = {extras = ["binary"], version = "3.3.*"}
+
+httpx = "0.28.*"
+websockets = ">=15,<18"
+python-multipart = "0.0.*"
+
+[dev-packages]
+ruff = "0.15.*"
+
+[requires]
+python_version = "3.13"
+
+[scripts]
+dev = "uvicorn app.main:app --reload --host 127.0.0.1 --port 8000"
+start = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
+lint = "ruff check ."
+migrate = "alembic upgrade head"
