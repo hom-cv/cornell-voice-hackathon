@@ -53,3 +53,11 @@
 .answerVoiceActions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 
 @media (max-width: 600px) { .header { flex-wrap: wrap; } }
+
+.listeningStatus { display: flex; align-items: center; gap: 12px; padding: 13px 15px; margin: 16px 0; border: 1px solid var(--accent-border); border-radius: 10px; background: var(--accent-surface); }
+.listeningStatus strong { display: block; color: var(--accent); font-size: 14px; }
+.listeningStatus div > span { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.liveDot, .waitingDot { flex-shrink: 0; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+.liveDot { animation: listeningPulse 1.5s ease-in-out infinite; }
+@keyframes listeningPulse { 50% { opacity: .4; transform: scale(.8); } }
+@media (prefers-reduced-motion: reduce) { .liveDot { animation: none; } }

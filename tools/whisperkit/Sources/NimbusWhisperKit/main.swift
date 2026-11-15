@@ -3,6 +3,8 @@ import Darwin
 import WhisperKit
 
 private struct Transcript: Encodable { let text: String }
+private struct WorkerRequest: Decodable { let id: String; let audio: String }
+private struct WorkerResponse: Encodable { let id: String; let text: String?; let error: String? }
 private struct BridgeFailure: Error { let message: String }
 
 // Any unexpected SDK network fallback must fail instead of downloading assets.
@@ -25,9 +27,11 @@ struct NimbusWhisperKit {
         dup2(STDERR_FILENO, STDOUT_FILENO)
         do {
             var values: [String: String] = [:]
-            let arguments = Array(CommandLine.arguments.dropFirst())
+            var arguments = Array(CommandLine.arguments.dropFirst())
+            let serving = arguments.contains("--serve")
+            arguments.removeAll { $0 == "--serve" }
             if arguments == ["--help"] {
-                output.write(Data("Usage: nimbus-whisperkit --audio FILE --model-folder DIR --tokenizer-folder DIR\n".utf8))
+                output.write(Data("Usage: nimbus-whisperkit [--serve | --audio FILE] --model-folder DIR --tokenizer-folder DIR\n".utf8))
                 return
             }
             guard arguments.count.isMultiple(of: 2) else {
@@ -40,13 +44,16 @@ struct NimbusWhisperKit {
                 values[arguments[index]] = arguments[index + 1]
             }
             let environment = ProcessInfo.processInfo.environment
-            guard let audio = values["--audio"],
-                  let model = values["--model-folder"] ?? environment["WHISPERKIT_MODEL_FOLDER"],
+            guard let model = values["--model-folder"] ?? environment["WHISPERKIT_MODEL_FOLDER"],
                   let tokenizer = values["--tokenizer-folder"] ?? environment["WHISPERKIT_TOKENIZER_FOLDER"] else {
                 throw BridgeFailure(message: "Provide audio, model folder, and tokenizer folder.")
             }
+            let audio = values["--audio"]
+            guard serving || audio != nil else {
+                throw BridgeFailure(message: "Provide --serve or --audio FILE.")
+            }
             let manager = FileManager.default
-            for file in [audio,
+            for file in [
                          "\(model)/AudioEncoder.mlmodelc/coremldata.bin",
                          "\(model)/MelSpectrogram.mlmodelc/coremldata.bin",
                          "\(model)/TextDecoder.mlmodelc/coremldata.bin",
@@ -82,11 +89,29 @@ struct NimbusWhisperKit {
                 temperatureFallbackCount: 0, skipSpecialTokens: true,
                 withoutTimestamps: true
             )
-            let results = try await whisper.transcribe(audioPath: audio, decodeOptions: options)
-            let text = results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-            let data = try JSONEncoder().encode(Transcript(text: text))
-            output.write(data)
-            output.write(Data("\n".utf8))
+            if serving {
+                output.write(Data("{\"ready\":true}\n".utf8))
+                // One loaded model, sequential JSON-lines requests over private pipes.
+                // EOF closes the worker when the parent backend exits.
+                while let line = readLine() {
+                    let request = try JSONDecoder().decode(WorkerRequest.self, from: Data(line.utf8))
+                    let response: WorkerResponse
+                    do {
+                        let results = try await whisper.transcribe(audioPath: request.audio, decodeOptions: options)
+                        let text = results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+                        response = WorkerResponse(id: request.id, text: text, error: nil)
+                    } catch {
+                        response = WorkerResponse(id: request.id, text: nil, error: "Transcription failed. Try another recording.")
+                    }
+                    output.write(try JSONEncoder().encode(response))
+                    output.write(Data("\n".utf8))
+                }
+            } else if let audio {
+                let results = try await whisper.transcribe(audioPath: audio, decodeOptions: options)
+                let text = results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+                output.write(try JSONEncoder().encode(Transcript(text: text)))
+                output.write(Data("\n".utf8))
+            }
         } catch let failure as BridgeFailure {
             FileHandle.standardError.write(Data("WhisperKit: \(failure.message)\n".utf8))
             exit(1)

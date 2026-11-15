@@ -40,8 +40,28 @@ The last two arguments may instead be supplied as `WHISPERKIT_MODEL_FOLDER` and
 Successful stdout contains one JSON object: `{"text":"recognized speech"}`.
 Library diagnostics and failures go to stderr; failure exits with code 1.
 Missing assets are rejected before loading, model downloading is disabled, and
-unexpected HTTP(S) tokenizer fallbacks are blocked. The process loads the model
-for each call, so the first call can take longer while Core ML prepares it.
+unexpected HTTP(S) tokenizer fallbacks are blocked. The single-file CLI still
+loads once and exits; the backend uses the persistent mode below instead.
+
+## Background worker
+
+The backend starts `nimbus-whisperkit --serve` during startup, loading the model
+in the background without blocking normal API requests. The worker emits
+`{"ready":true}` once loaded, then accepts newline-delimited JSON on stdin:
+`{"id":"unique-request-id","audio":"/absolute/path/to/recording.wav"}`.
+Each response includes the same `id` and either `text` or `error`. The model stays
+loaded for subsequent requests; there is no speech-server port or external API.
+
+Recordings are processed sequentially. Temporary WAV files are deleted after each
+request. A cancelled, timed-out, crashed, or malformed exchange discards the worker
+so a late response cannot be mistaken for another recording. The next request
+starts a fresh worker. Backend shutdown stops the child process and releases the
+model. Startup failures are logged and retried on the next recording.
+
+Rebuild the bridge and restart the backend after updating. Use one backend process
+for this shared-station setup: each backend process maintains its own speech model.
+The first recording can still wait if startup loading has not completed; Bonsai
+form generation remains a separate step after transcription.
 
 For CPU-only execution, set `WHISPERKIT_COMPUTE_UNITS=cpu`; otherwise WhisperKit
 uses its default Apple Silicon acceleration. This option does not change model

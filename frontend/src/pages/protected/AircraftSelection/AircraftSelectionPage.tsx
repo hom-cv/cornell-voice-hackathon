@@ -82,7 +82,7 @@ export default function AircraftSelectionPage({ employee, onSignOut, onSelectAir
     <div className={styles.page}>
       <AppHeader employee={employee} onSignOut={onSignOut} />
       <main className={styles.main}>
-        <NimbusMascot />
+        <NimbusMascot pose="wave" />
         <div className={styles.greeting}>
           <span>NIMBUS</span>
           <h1>Hi {employee.name}. Which aircraft are you on?</h1>

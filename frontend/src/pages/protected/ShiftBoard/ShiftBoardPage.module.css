@@ -15,7 +15,7 @@
 .summary h3 { font-size: 16px; margin: 0 0 6px; }
 .summary p { font-size: 13px; color: var(--muted); margin: 0; }
 .progress { padding: 16px 18px; }
-.progressHeading { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 12px; }
+.progressHeading { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: space-between; font-size: 13px; margin-bottom: 12px; }
 .progressBar { display: flex; gap: 3px; height: 15px; border-radius: 4px; overflow: hidden; background: var(--canvas); }
 .progressBar span { border-radius: 3px; }
 .done { background: var(--success); } .in_progress { background: var(--info); } .blocked { background: var(--blocked); } .open { background: var(--muted); }
@@ -71,3 +71,9 @@
 .reviewPreview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 @media (max-width: 760px) { .briefing { grid-template-columns: 100px 1fr; } }
 @media (max-width: 480px) { .briefing { grid-template-columns: 1fr; } .briefing .mascot { display: none; } }
+
+.progressActions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.progressActions button { font-size: 12px; }
+@media (max-width: 480px) { .progressActions { width: 100%; justify-content: space-between; gap: 10px; } }
+
+.taskTitle { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; }

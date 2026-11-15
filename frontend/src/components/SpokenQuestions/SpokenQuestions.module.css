@@ -1,0 +1,2 @@
+.controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 12px 0 18px; }
+.controls span { font-size: 12px; line-height: 1.5; color: var(--muted); }

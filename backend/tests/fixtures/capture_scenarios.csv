@@ -1,0 +1,11 @@
+id,category,priority,title,transcript,ata_chapter,ata_advisory,expected_status,max_questions,notes
+S001,ata_auto,P0,Right landing light,"Right landing light is inoperative. Inspected the lens, no damage found. Troubleshooting continues with night shift.",33,suggested,in_progress,0,
+S018,ata_conflict,P0,ATA21 light mismatch,Right landing light does not illuminate. I logged it as ATA 21. No troubleshooting yet; night shift takes over.,33,conflict,not_started,0,
+S019,ata_correct,P1,Already correct ATA33,"Right landing light fault, ATA 33. Troubleshooting is ongoing. Hand over to night shift.",33,none,in_progress,0,
+S024,ata_ambiguous,P0,Multiple systems in one input,"Landing light failed, and hydraulic pump is leaking. We need separate work items for each issue.",,none,,2,Single-task capture must not force one ATA for multiple systems; recommend separate recordings.
+S030,workflow,P0,Late finding before changeover,"We noticed the right landing light was out five minutes before the shift change. No troubleshooting started yet, the shift lead was informed, and night shift is assigned to review the discrepancy.",33,suggested,not_started,0,
+S032,workflow,P0,AMM not checked explicitly,"The right landing light does not work. We have not checked the AMM yet. The issue is recorded, and the incoming shift will investigate.",33,suggested,not_started,0,Record exactly what was stated; do not emit an extra AMM question just because it is unchecked.
+S035,workflow,P1,Not yet started with reason,Cargo door latch sticks. Replacement has not started because the correct part is unavailable. Night shift will check parts availability.,52,suggested,blocked,0,
+S036,workflow,P0,Physical condition open,Cargo door latch sticks and the door remains open. No repair completed. We stopped work and informed the shift lead. Next shift to continue.,52,suggested,in_progress,0,
+S040,workflow,P0,Never turn pending into done,Right landing light is still inoperative. We completed only a visual inspection. We have not repaired it and night shift must continue.,33,suggested,in_progress,0,
+S042,workflow,P1,Historic fault but completed now,"The right taxi light was inoperative this morning. We replaced the lamp, verified it now illuminates, and no work remains on this item.",33,suggested,done,0,

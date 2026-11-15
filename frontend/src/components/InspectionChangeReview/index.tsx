@@ -11,7 +11,7 @@ export interface InspectionChange {
 
 const fields: { key: keyof InspectionDraft; label: string }[] = [
   { key: 'title', label: 'Inspection title' },
-  { key: 'area', label: 'Location / area' },
+  { key: 'area', label: 'ATA chapter' },
   { key: 'status', label: 'Status' },
   { key: 'found', label: 'What was found' },
   { key: 'workDone', label: 'What was done' },

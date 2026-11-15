@@ -117,24 +117,21 @@ export default function HandOverTogetherPage({ registration, employee, handoffId
   }
 
   async function confirmHandoff() {
-    if (busy || !canConfirm) return
+    if (busy || readOnly || (!canConfirm && !confirmed)) return
     setBusy(true); setError('')
+    let stage = 'confirm'
     try {
-      const record = await api.confirmHandoff(registration, handoffId)
-      if (alive.current) setHandoff(record)
+      if (!confirmed) {
+        const record = await api.confirmHandoff(registration, handoffId)
+        if (alive.current) setHandoff(record)
+      }
+      stage = 'complete'
+      const completedRecord = await api.finishHandoff(registration, handoffId)
+      if (alive.current) setHandoff(completedRecord)
+      stage = 'log out'
+      await onSignOut()
     } catch (failure) {
-      if (alive.current) setError(failure instanceof Error ? failure.message : 'Unable to confirm the handoff. Please try again.')
-    } finally { if (alive.current) setBusy(false) }
-  }
-
-  async function finish() {
-    if (busy || !confirmed) return
-    setBusy(true); setError('')
-    try {
-      const record = await api.finishHandoff(registration, handoffId)
-      if (alive.current) setHandoff(record)
-    } catch (failure) {
-      if (alive.current) setError(failure instanceof Error ? failure.message : 'Unable to finish the handoff. Please try again.')
+      if (alive.current) setError(failure instanceof Error ? failure.message : `Unable to ${stage}. Please try again.`)
     } finally { if (alive.current) setBusy(false) }
   }
 
@@ -165,7 +162,7 @@ export default function HandOverTogetherPage({ registration, employee, handoffId
     window.setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
-  const step = completed ? 3 : confirmed ? 3 : canConfirm ? 2 : verified ? 1 : 0
+  const step = completed || confirmed || canConfirm ? 2 : verified ? 1 : 0
   return <div className={styles.page}>
     <header className={styles.header}>
       <button onClick={back} disabled={busy}><span aria-hidden="true">←</span> Shift board</button>
@@ -176,12 +173,12 @@ export default function HandOverTogetherPage({ registration, employee, handoffId
     {handoff && !readOnly && <DraftRecoveryNotice recovery={discussionRecovery} />}
     {loading ? <main className={styles.loading} role="status">Loading the saved handoff…</main> : !handoff ? <main className={styles.loading}><h1>Unable to load this handoff</h1><p role="alert">{error}</p><Button onClick={() => { setLoading(true); setError(''); setAttempt((value) => value + 1) }}>Try again</Button><Button onClick={onBack}>Back to shift board</Button></main> : <main className={styles.layout}>
       <aside className={styles.sidebar}>
-        <div className={styles.mascot}><NimbusMascot /></div>
+        <div className={styles.mascot}><NimbusMascot pose={completed ? "complete" : currentItem?.leftOpen && verified ? "attention" : verified ? "guide" : "wave"} /></div>
         <section className={styles.guide} aria-label="Handover walkthrough">
           <span className={styles.eyebrow}>NIMBUS</span>
           <h1>{readOnly ? 'Saved handoff record.' : completed ? 'Handoff complete.' : confirmed ? 'Handoff confirmed.' : verified ? currentItem ? 'Walk through this item together.' : 'Ready to confirm together.' : 'Let’s hand over together.'}</h1>
-          <p>{readOnly ? 'Review the previous shift’s notes and acknowledgments below.' : completed ? 'Your handover record is saved. You can now log out of this shared station.' : confirmed ? 'The incoming employee has acknowledged the required items. Finish to complete the handover record.' : verified ? currentItem ? 'Discuss the current condition and next action. The incoming employee should confirm they understand.' : attentionCount ? 'All required items have been acknowledged. Review the report together, then confirm the handoff.' : 'There are no individual follow-up items to acknowledge. Review the report together before confirming.' : 'Ask the incoming employee to select their name and enter their six-digit PIN.'}</p>
-          <ol className={styles.steps} aria-label="Handover progress">{['Verify incoming', 'Review together', 'Confirm', 'Finish'].map((label, index) => <li key={label} className={index < step || completed ? styles.completedStep : index === step ? styles.currentStep : ''} aria-current={index === step && !completed ? 'step' : undefined}><span>{index < step || completed ? '✓' : index + 1}</span>{label}</li>)}</ol>
+          <p>{readOnly ? 'Review the previous shift’s notes and acknowledgments below.' : completed ? 'Your handover record is saved. You can now log out of this shared station.' : confirmed ? 'The handover is confirmed. Complete the saved record and log out to end your shift.' : verified ? currentItem ? 'Discuss the current condition and next action. The incoming employee should confirm they understand.' : attentionCount ? 'All required items have been acknowledged. Review the report together, then confirm the handoff.' : 'There are no individual follow-up items to acknowledge. Review the report together before confirming.' : 'Ask the incoming employee to select their name and enter their six-digit PIN.'}</p>
+          <ol className={styles.steps} aria-label="Handover progress">{['Verify incoming', 'Review together', 'Confirm & log out'].map((label, index) => <li key={label} className={index < step || completed ? styles.completedStep : index === step ? styles.currentStep : ''} aria-current={index === step && !completed ? 'step' : undefined}><span>{index < step || completed ? '✓' : index + 1}</span>{label}</li>)}</ol>
           {error && <p className={styles.error} role="alert">{error}</p>}
           {!readOnly && !verified && handoff.status === 'draft' && <form className={styles.verifyForm} onSubmit={verifyIncoming}>
             <TextField select fullWidth label="Incoming employee" value={incomingId} onChange={(event) => { setIncomingId(event.target.value); setPin(''); setError('') }} disabled={busy || handoff.recipients.length === 0} required>
@@ -206,9 +203,9 @@ export default function HandOverTogetherPage({ registration, employee, handoffId
           </form>}
           {!readOnly && verified && handoff.status === 'draft' && !currentItem && <div className={styles.sidebarActions}>
             <p className={styles.reviewed} role="status">{reviewedCount} of {attentionCount} follow-up items acknowledged</p>
-            <Button variant="contained" disabled={busy || !canConfirm} onClick={confirmHandoff}>{busy ? 'Confirming…' : 'Confirm handover'}</Button>
+            <Button variant="contained" disabled={busy || !canConfirm} onClick={confirmHandoff}>{busy ? 'Completing handover…' : 'Confirm handover & log out'}</Button>
           </div>}
-          {!readOnly && confirmed && <div className={styles.sidebarActions}><p className={styles.note}>Confirmed {displayTime(handoff.confirmedAt)}</p><Button variant="contained" disabled={busy} onClick={finish}>{busy ? 'Finishing…' : 'Finish'}</Button></div>}
+          {!readOnly && confirmed && <div className={styles.sidebarActions}><p className={styles.note}>Confirmed {displayTime(handoff.confirmedAt)}</p><Button variant="contained" disabled={busy} onClick={confirmHandoff}>{busy ? 'Completing handover…' : 'Complete handover & log out'}</Button></div>}
           {completed && <div className={styles.sidebarActions}><p className={styles.note}>Completed {displayTime(handoff.completedAt)}</p><Button variant="contained" disabled={busy} onClick={logOut}>{busy ? 'Logging out…' : 'Log out'}</Button></div>}
         </section>
       </aside>

@@ -21,6 +21,7 @@ from websockets.exceptions import WebSocketException
 
 from app.core.settings import get_settings
 from app.schemas.capture import CaptureDraft, CaptureOut, Clarification
+from app.services.ata import ATA_INSTRUCTIONS, ATA_LABELS, UNASSIGNED_ATA
 
 MAX_AUDIO_BYTES = 15 * 1024 * 1024
 MAX_AUDIO_SECONDS = 90
@@ -197,7 +198,8 @@ If component is ambiguous, ask once: "Was it the seat cover or the whole seat?"
 and "What is its condition now, and is there any work left on this task?"
 Answers: "The cover." and "It is fitted and secure. Nothing remains."
 Correct ready response:
-{"questions":[],"updates":{"title":"Torn seat cover","area":"Cabin seat 12A",
+{"questions":[],"updates":{"title":"Torn seat cover",
+"area":"ATA 25 · Equipment / furnishings",
 "status":"done","leftOpen":false,"handoffReviewRequired":false,
 "manualReference":"","found":"Seat cover is torn",
 "workDone":"Replaced the seat cover at cabin seat 12A.",
@@ -462,8 +464,15 @@ def _reconciliation_issues(
 ) -> list[str]:
     """Validate a whole proposed form; never silently merge omitted fields."""
     issues: list[str] = []
+    if candidate.area not in ATA_LABELS | {UNASSIGNED_ATA}:
+        issues.append(
+            "area must be an exact ATA catalog label or "
+            "Unassigned · Needs classification."
+        )
     numbers = set(re.findall(r"\d+(?:\.\d+)?", source))
     for field, value in candidate.model_dump().items():
+        if field == "area" and value in ATA_LABELS:
+            continue
         if (
             isinstance(value, str)
             and not set(re.findall(r"\d+(?:\.\d+)?", value)) <= numbers
@@ -588,7 +597,7 @@ async def extract_form(
         "repeat_penalty": 1.0,
         "chat_template_kwargs": {"enable_thinking": False},
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": SYSTEM_PROMPT + ATA_INSTRUCTIONS},
             {"role": "user", "content": json.dumps(context)},
         ],
         "response_format": {
@@ -650,7 +659,7 @@ async def extract_form(
             ][:15]
         if attempt == 0:
             payload["messages"] = [
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": SYSTEM_PROMPT + ATA_INSTRUCTIONS},
                 {"role": "user", "content": json.dumps(context)},
                 {
                     "role": "user",

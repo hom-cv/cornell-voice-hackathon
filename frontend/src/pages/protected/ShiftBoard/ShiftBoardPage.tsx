@@ -45,7 +45,7 @@ export default function ShiftBoardPage({ registration, employee, onSignOut, onSw
       <main className={styles.main}>
         {error ? <section className={styles.message} role="alert"><h1>Unable to load this aircraft</h1><p>{error}</p><Button onClick={() => { setError(''); setAttempt((value) => value + 1) }}>Retry</Button><Button onClick={onSwitchAircraft}>Choose another aircraft</Button></section> : !board ? <p role="status">Loading inspection board…</p> : <>
           <section className={styles.briefing} aria-label="Nimbus briefing">
-            <div className={styles.mascot}><NimbusMascot /></div>
+            <div className={styles.mascot}><NimbusMascot pose={reviewItem?.leftOpen ? "attention" : "ready"} /></div>
             <div className={`${styles.speech} ${reviewItem ? styles.caution : ''}`} role="region" aria-roledescription={reviewItem ? 'carousel' : undefined} aria-label="Tasks needing review">
               <span className={styles.eyebrow}>NIMBUS · {reviewItem ? 'NEEDS FOLLOW-UP' : 'INSPECTION BOARD'}</span>
               {reviewItem ? <>
@@ -80,7 +80,7 @@ export default function ShiftBoardPage({ registration, employee, onSignOut, onSw
             <div><span className={styles.eyebrow}>SIGNED IN</span><h3>{employee.name}</h3><p>Inspection task board</p></div>
           </section>
           <section className={styles.progress} aria-label="Work progress">
-            <div className={styles.progressHeading}><strong>{board.items.length} work items</strong><span>{counts.done} of {board.items.length} done</span></div>
+            <div className={styles.progressHeading}><strong>{board.items.length} work items</strong><div className={styles.progressActions}><span>{counts.done} of {board.items.length} done</span><Button variant="contained" onClick={onPrepareHandoff}>Prepare handoff</Button></div></div>
             <div className={styles.progressBar} role="img" aria-label={progressOrder.map((status) => `${labels[status]}: ${counts[status]}`).join(', ')}>
               {progressOrder.map((status) => counts[status] > 0 && <span key={status} className={styles[status]} style={{ flex: counts[status] }} />)}
             </div>
@@ -88,7 +88,7 @@ export default function ShiftBoardPage({ registration, employee, onSignOut, onSw
           </section>
           <HandoffHistory registration={registration} onOpen={onOpenHandoff} />
           <section className={styles.tasks} aria-label="Inspection work items">
-            <div className={styles.taskHeader}><h2>Work items</h2><Button variant="contained" onClick={onPrepareHandoff}>Prepare handoff</Button><div className={styles.filters} aria-label="Filter by status">{filterOrder.map((status) => <button key={status} aria-pressed={filter === status} onClick={() => setFilter(status)} className={filter === status ? styles.activeFilter : ''}>{status === 'all' ? 'All' : labels[status]}</button>)}</div></div>
+            <div className={styles.taskHeader}><div className={styles.taskTitle}><h2>Work items</h2><Button size="small" variant="outlined" onClick={() => onCapture()}>+ New work item</Button></div><div className={styles.filters} aria-label="Filter by status">{filterOrder.map((status) => <button key={status} aria-pressed={filter === status} onClick={() => setFilter(status)} className={filter === status ? styles.activeFilter : ''}>{status === 'all' ? 'All' : labels[status]}</button>)}</div></div>
             <div aria-live="polite">
               {visibleItems.length === 0 && <p className={styles.empty}>{board.items.length === 0 ? 'No work items have been added yet.' : `No ${labels[filter as WorkStatus]?.toLowerCase()} work items.`}</p>}
               {visibleItems.map((item) => <article className={styles.task} key={item.id}>

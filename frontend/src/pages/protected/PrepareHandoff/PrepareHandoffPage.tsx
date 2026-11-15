@@ -1,3 +1,4 @@
+import SpokenQuestions from '@/components/SpokenQuestions'
 import { AppearanceControl } from '@/components/AppearanceProvider'
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
@@ -231,18 +232,18 @@ export default function PrepareHandoffPage({ registration, employee, onBack, onC
     </header>
     {!loading && <DraftRecoveryNotice recovery={{ ...recovery, discard: discardRecoveredDraft }} />}
     <main className={styles.main}>
-      <div className={styles.mascot}><NimbusMascot /></div>
+      <div className={styles.mascot}><NimbusMascot pose="guide" listening={recorder.recording} /></div>
       <div className={styles.intro}>
         <span className={styles.eyebrow}>NIMBUS</span>
-        <h1>{pendingPreview ? 'Review the proposed task updates.' : loading ? 'Reviewing your inspection notes…' : questionCount === 1 ? 'One quick check before handoff.' : questionCount ? 'A few quick checks before handoff.' : review ? 'Let’s prepare your handoff report.' : 'Let’s prepare your handoff.'}</h1>
-        <p>{pendingPreview ? 'Compare the saved notes with the proposed changes. Nothing is saved until you approve.' : loading ? 'Checking the aircraft’s saved work items for anything the next shift needs to know.' : review ? `${review.reviewedTaskCount} work ${review.reviewedTaskCount === 1 ? 'item' : 'items'} reviewed for ${registration}. ${questionCount ? 'Short answers are enough. If you don’t know, say so.' : 'No follow-up questions were returned.'}` : 'Nimbus uses the aircraft’s saved notes to help the next shift pick up where you stopped.'}</p>
+        <h1>{pendingPreview ? 'Review the proposed task updates.' : loading ? 'Checking safety handoff notes…' : questionCount === 1 ? 'One safety question before handoff.' : questionCount ? 'Safety questions before handoff.' : review ? 'Let’s prepare your handoff report.' : 'Let’s prepare your handoff.'}</h1>
+        <p>{pendingPreview ? 'Compare the saved notes with the proposed changes. Nothing is saved until you approve.' : loading ? 'Checking saved notes for unresolved safety concerns the incoming employee needs to understand.' : review ? `${review.reviewedTaskCount} work ${review.reviewedTaskCount === 1 ? 'item' : 'items'} reviewed for ${registration}. ${questionCount ? 'Short answers are enough. If you don’t know, say so.' : 'No additional safety questions were identified in the notes.'}` : 'Nimbus uses the aircraft’s saved notes to help the next shift pick up where you stopped.'}</p>
       </div>
       <ol className={styles.steps} aria-label="Handoff progress">
         <li className={review ? styles.completed : styles.current} aria-current={!review ? 'step' : undefined}><span>{review ? '✓' : '1'}</span>Notes captured</li>
-        <li className={review ? styles.current : ''} aria-current={review ? 'step' : undefined}><span>2</span>Fill gaps</li>
+        <li className={review ? styles.current : ''} aria-current={review ? 'step' : undefined}><span>2</span>Safety review</li>
         <li><span>3</span>Hand over together</li>
       </ol>
-      {loading && <section className={styles.loading} role="status"><span className={styles.loadingDot} /> Reviewing saved notes. This may take a moment.</section>}
+      {loading && <section className={styles.loading} role="status"><span className={styles.loadingDot} /> Reviewing recorded safety concerns. This may take a moment.</section>}
       {error && <section className={styles.error} role="alert"><p>{error}</p>{!review && !loading && <Button onClick={() => { setLoading(true); setError(''); setAttempt((value) => value + 1) }}>Try again</Button>}</section>}
       {pendingPreview ? <section className={styles.card} aria-labelledby="handoff-changes-title">
         <div className={styles.cardHeader}><div><span className={styles.eyebrow}>REVIEW BEFORE SAVING</span><h2 id="handoff-changes-title">Proposed inspection changes</h2></div><span className={styles.answerCount}>{pendingPreview.result.changes.length} {pendingPreview.result.changes.length === 1 ? 'task' : 'tasks'}</span></div>
@@ -255,8 +256,9 @@ export default function PrepareHandoffPage({ registration, employee, onBack, onC
           {previewStale ? <Button type="button" variant="contained" disabled={locked} onClick={() => requestPreview(pendingPreview.answers)}>{building ? 'Preparing preview…' : 'Regenerate preview'}</Button> : <Button type="button" variant="contained" disabled={locked} onClick={approvePreview}>{building ? 'Building report…' : 'Approve changes & build report'}</Button>}
         </div></div>
       </section> : review && <form className={styles.card} onSubmit={buildReport}>
-        <div className={styles.cardHeader}><div><h2>{questionCount === 1 ? 'Quick check' : questionCount ? `${questionCount} quick checks` : 'Ready for handoff'}</h2></div>{questionCount > 0 && <span className={styles.answerCount} aria-live="polite">{answered}/{questionCount} answered</span>}</div>
-        {questionCount === 0 ? <div className={styles.noQuestions}><span aria-hidden="true">✓</span><p>No follow-up questions were returned. Nimbus will use the saved inspection notes. Review the report for missing details before sharing it.</p></div> : <div className={styles.questions}>
+        <div className={styles.cardHeader}><div><h2>{questionCount === 1 ? 'Safety question' : questionCount ? `${questionCount} safety questions` : 'Ready for handoff'}</h2></div>{questionCount > 0 && <span className={styles.answerCount} aria-live="polite">{answered}/{questionCount} answered</span>}</div>
+        {questionCount === 0 ? <div className={styles.noQuestions}><span aria-hidden="true">✓</span><p>No additional safety questions were identified in the notes. Nimbus will use the saved inspection notes. Review the report for missing details before sharing it.</p></div> : <div className={styles.questions}>
+          <SpokenQuestions text={review.questions.map((question, index) => `Question ${index + 1}. ${taskTitles[question.taskId] ?? 'Inspection'}. ${spokenQuestion(question.question)}`).join(' ')} paused={locked} />
           {review.questions.map((question, index) => <section className={styles.question} key={`${question.taskId}-${index}`}>
             <div className={styles.taskContext}>{taskTitles[question.taskId] ?? 'Inspection note'}</div>
             <div className={styles.questionHeading}><span className={styles.number}>{index + 1}</span><label htmlFor={`handoff-answer-${index}`}>{spokenQuestion(question.question)}</label></div>
