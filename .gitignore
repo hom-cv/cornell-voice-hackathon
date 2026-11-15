@@ -11,11 +11,3 @@ __pycache__/
 .ruff_cache/
 .coverage
 htmlcov/
-
-.build/
-.cache/
-.swiftpm/
-.models/
-.runtime/
-*.log
-*.tsbuildinfo

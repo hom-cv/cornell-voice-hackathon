@@ -291,5 +291,3 @@ demo aircraft N417HD) from `backend` with `pipenv run alembic upgrade head`. Oth
 aircraft remain restricted. Temporary-database lifecycle checks and PostgreSQL
 offline migration rendering passed; the local PostgreSQL upgrade must be run
 outside the agent sandbox because localhost access was denied.
-
-The earlier native SwiftUI prototype remains in `Sources/` and `Resources/`. See [its original setup instructions](NATIVE_README.md).
