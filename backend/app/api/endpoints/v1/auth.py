@@ -17,6 +17,15 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 DUMMY_HASH = hash_pin(secrets.token_hex(16))
 
 
+@router.get("/me", response_model=EmployeeOut)
+def current_employee(
+    response: Response,
+    user: User = Depends(get_current_user),
+):
+    response.headers["Cache-Control"] = "no-store"
+    return EmployeeOut.model_validate(user)
+
+
 @router.get("/employees", response_model=list[EmployeeOut])
 def employees(db: Session = Depends(get_db)):
     return db.scalars(

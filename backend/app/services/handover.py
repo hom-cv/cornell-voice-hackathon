@@ -13,14 +13,18 @@ from sqlalchemy.orm import Session
 from app.api.endpoints.v1.aircraft import get_board, lock_aircraft
 from app.api.endpoints.v1.auth import DUMMY_HASH
 from app.core.security import as_utc, utc_now, verify_pin
-from app.models import AircraftAssignment, Handoff, User, WorkItem
+from app.models import AircraftAssignment, Handoff, HandoffPreview, User, WorkItem
 from app.schemas.auth import EmployeeOut
 from app.schemas.board import BoardOut, WorkItemInput
 from app.schemas.capture import CaptureDraft, Clarification
 from app.schemas.handoff import (
     HandoffAcknowledgeInput,
+    HandoffPreviewOut,
     HandoffRecord,
     HandoffReportInput,
+    HandoffStartInput,
+    HandoffSummary,
+    HandoffTaskChange,
     HandoffVerifyInput,
 )
 from app.services.capture import extract_form
@@ -162,10 +166,10 @@ def _load(
     if mutate:
         query = query.with_for_update()
     record = db.scalar(query)
-    if record is None or actor.id not in {
-        record.outgoing_user_id,
-        record.incoming_user_id,
-    }:
+    if record is None or (
+        actor.id not in {record.outgoing_user_id, record.incoming_user_id}
+        and (mutate or record.status != "completed")
+    ):
         raise HTTPException(404, "Handoff not found.")
     if mutate and actor.id != record.outgoing_user_id:
         raise HTTPException(
@@ -178,12 +182,12 @@ def get_handoff(registration: str, handoff_id: str, actor: User, db: Session):
     return handoff_output(_load(registration, handoff_id, actor, db, mutate=False), db)
 
 
-async def start_handoff(
+async def preview_handoff(
     registration: str,
     body: HandoffReportInput,
     actor: User,
     db: Session,
-) -> HandoffRecord:
+) -> HandoffPreviewOut:
     board = get_board(registration, actor, db)
     original_hash = _fingerprint(_snapshot(board))
     items = {item.id: item for item in board.items}
@@ -204,30 +208,100 @@ async def start_handoff(
             "", draft, clarifications, require_reconciliation=True
         )
         if result.questions:
-            raise HTTPException(502, "Nimbus could not reconcile the answers. "
-                                "No tasks were saved; review your answers.")
+            raise HTTPException(
+                502,
+                "Nimbus could not reconcile the answers. "
+                "No tasks were saved; review your answers.",
+            )
         try:
             candidates[task_id] = WorkItemInput.model_validate(
                 result.draft.model_dump()
             )
         except ValidationError:
             raise HTTPException(
-                502, "Nimbus returned an incomplete task update. No tasks were "
-                "saved. Review the answers and retry."
+                502,
+                "Nimbus returned an incomplete task update. No tasks were "
+                "saved. Review the answers and retry.",
             ) from None
     lock_aircraft(registration, actor, db)
     db.expire_all()
     current = get_board(registration, actor, db)
     if _fingerprint(_snapshot(current)) != original_hash:
-        raise HTTPException(409, "Aircraft tasks changed while answers were being "
-                            "processed. Review the board and prepare the handoff again."
-                            )
+        raise HTTPException(
+            409,
+            "Aircraft tasks changed while answers were being "
+            "processed. Review the board and prepare the handoff again.",
+        )
+    changes = []
+    serialized = {}
     for task_id, candidate in candidates.items():
-        item = db.get(WorkItem, task_id)
-        for field, value in candidate.model_dump(exclude={"photo_data"}).items():
-            setattr(item, field, value)
-        if item.status == "open":
-            item.handoff_review_required = True
+        if candidate.status == "open":
+            candidate.handoff_review_required = True
+        before = CaptureDraft.model_validate(
+            items[task_id].model_dump(exclude={"id", "assignee_id", "photo_data"})
+        )
+        after = CaptureDraft.model_validate(candidate.model_dump())
+        serialized[task_id] = candidate.model_dump(exclude={"photo_data"})
+        if before != after:
+            changes.append(
+                HandoffTaskChange(
+                    task_id=task_id,
+                    title=items[task_id].title,
+                    before=before,
+                    after=after,
+                )
+            )
+    preview = HandoffPreview(
+        id=str(uuid4()),
+        aircraft_registration=registration,
+        user_id=actor.id,
+        board_hash=original_hash,
+        answers=[answer.model_dump(by_alias=True) for answer in body.answers],
+        candidates=serialized,
+        expires_at=utc_now() + timedelta(minutes=30),
+    )
+    db.add(preview)
+    db.commit()
+    return HandoffPreviewOut(
+        preview_id=preview.id, changes=changes, expires_at=preview.expires_at
+    )
+
+
+async def start_handoff(
+    registration: str, body: HandoffStartInput, actor: User, db: Session
+) -> HandoffRecord:
+    lock_aircraft(registration, actor, db)
+    answers = [answer.model_dump(by_alias=True) for answer in body.answers]
+    preview = None
+    if body.preview_id:
+        preview = db.scalar(
+            select(HandoffPreview)
+            .where(
+                HandoffPreview.id == body.preview_id,
+                HandoffPreview.aircraft_registration == registration,
+                HandoffPreview.user_id == actor.id,
+            )
+            .with_for_update()
+        )
+        if preview is None:
+            raise HTTPException(404, "Handoff preview not found.")
+        if preview.answers != answers:
+            raise HTTPException(409, "Answers changed. Preview the task updates again.")
+        if preview.handoff_id:
+            return handoff_output(db.get(Handoff, preview.handoff_id), db)
+        if as_utc(preview.expires_at) <= utc_now():
+            raise HTTPException(409, "Preview expired. Preview the task updates again.")
+        current = get_board(registration, actor, db)
+        if _fingerprint(_snapshot(current)) != preview.board_hash:
+            raise HTTPException(
+                409, "Aircraft tasks changed. Preview the updates again."
+            )
+        for task_id, values in preview.candidates.items():
+            item = db.get(WorkItem, task_id)
+            for field, value in values.items():
+                setattr(item, field, value)
+    elif body.answers:
+        raise HTTPException(409, "Preview the task changes before saving the handoff.")
     db.flush()
     board = get_board(registration, actor, db)
     report = build_report(board, body.answers, actor.name, answers_applied=True)
@@ -246,6 +320,9 @@ async def start_handoff(
         created_at=utc_now(),
     )
     db.add(record)
+    db.flush()
+    if preview is not None:
+        preview.handoff_id = record.id
     db.commit()
     return handoff_output(record, db)
 
@@ -428,3 +505,32 @@ def finish_handoff(
     record.completed_at = utc_now()
     db.commit()
     return handoff_output(record, db)
+
+
+def list_handoffs(registration: str, actor: User, db: Session):
+    get_board(registration, actor, db)
+    records = db.scalars(
+        select(Handoff)
+        .where(
+            Handoff.aircraft_registration == registration,
+            (Handoff.status == "completed")
+            | (Handoff.outgoing_user_id == actor.id)
+            | (Handoff.incoming_user_id == actor.id),
+        )
+        .order_by(Handoff.created_at.desc())
+    ).all()
+    return [
+        HandoffSummary(
+            id=record.id,
+            outgoing=record.snapshot["outgoing"],
+            incoming=(
+                EmployeeOut.model_validate(db.get(User, record.incoming_user_id))
+                if record.incoming_user_id
+                else None
+            ),
+            status=record.status,
+            created_at=record.created_at,
+            completed_at=record.completed_at,
+        )
+        for record in records
+    ]

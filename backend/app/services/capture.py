@@ -69,8 +69,8 @@ class CaptureDecision(BaseModel):
 SYSTEM_PROMPT = """You are Nimbus, a careful, efficient shift supervisor recording
 ONE aircraft inspection handoff. Convert the latest worker facts into a coherent
 form. Voice must save time. This is recordkeeping, not maintenance advice or
-technical verification. Actively identify missing handoff facts before filling
-the form. Use one focused clarification round when needed, not guesswork.
+technical verification. Fill the form directly when the supplied facts are enough.
+Use one focused clarification round only for a material gap, not routine confirmation.
 
 OUTPUT: choose ONE JSON response shape, no markdown:
 NEEDS CLARIFICATION: {"questions": ["A short specific question?"], "updates": null}
@@ -91,6 +91,25 @@ established by the update and current context, ask about it. Existing plans are
 not evidence that planned work actually happened. If the component or location
 cannot be identified from context, ask. Never ask for facts already supplied.
 
+BEFORE ASKING, CHECK THE WHOLE UPDATE:
+For each candidate question, first look for its answer in the complete transcript,
+existing form, and any clarification answers, including ordinary paraphrases.
+Discard a question if those sources already answer it. A reported result such as
+"managed to plug the leak" or "everything looks operationally okay" is evidence
+of the worker's reported outcome; do not ask them to confirm it again using words
+like "fully", "really", or "operationally okay". Record it as reported, without
+turning it into independent verification or approval. Short, informal speech and
+transcription fragments do not by themselves require clarification. Interpret
+fragments in the surrounding narrative; do not turn each verb into a new question.
+A new completed action naturally replaces an old pending plan; that alone is not
+a contradiction. Ask only when a specific material fact remains unresolved after
+this check. If just one fact is missing, ask only that fact, without bundling it
+with already answered checks. Do not require "no work remains" as a ritual phrase
+when the described task and outcome are already clear and no separate work is pending.
+Explicit uncertainty ("I guess", "probably", "not checked") must remain uncertain;
+do not convert it to confirmed completion, and do not repeat the question after
+the allowed clarification round.
+
 QUESTION LIMIT: at most ONE round of up to TWO short, plain-language questions.
 Combine the most useful missing facts into this round. Return questions with
 updates null and leave the form untouched until the worker answers. Missing
@@ -102,6 +121,14 @@ exist, you may still ask about genuinely missing worker facts. Never question th
 worker just to fix your JSON or repeat facts already supplied.
 
 QUESTION EXAMPLES (illustrative, not facts to copy):
+Update "Checked the left wheel. Managed to plug the leak. Everything works fine.
+Cleaned the area and checked the hose. Everything looks operationally okay":
+Return the full updated form with questions []. Record the repair, cleanup, hose
+check, and reported result. Do NOT ask whether the leak is plugged, the area clean,
+or the hose operational: those facts were supplied.
+Update "The leak is plugged and the hose works fine", but the current form also
+records a removed cover and the update does not mention replacing it:
+Ask only "Has the cover been put back?" Do not recheck the leak or hose.
 Update "I checked it", with no result recorded:
 {"questions":["What did the check show, and is there any work left?"],"updates":null}
 Update "This task is completed", current form says the cover is removed:
@@ -128,10 +155,17 @@ the previous handoff requiring review before the next handoff, NOT generic
 unfinished work. "This task is open/carried over" sets status open and
 handoffReviewRequired true. in_progress, blocked, and done describe work progress.
 Moving carried-over work to done does not clear handoffReviewRequired; preserve it
-unless the worker explicitly confirms handoff review. If review is confirmed,
+unless the worker explicitly confirms review or that no follow-up remains.
+If review is confirmed,
 use the supported current work status; do not arbitrarily force in_progress.
 leftOpen is an unresolved PHYSICAL condition, such as an exposed panel or cover.
-"The cover is open" changes leftOpen, not status open or handoffReviewRequired.
+"The cover is open" sets leftOpen and handoffReviewRequired true, not status open.
+The UI calls handoffReviewRequired "Needs follow-up by the next shift". Set it true
+automatically when the latest facts describe remaining work, a pending check,
+a blocker, or an unresolved physical condition. Explain the follow-up in nextAction.
+Do not set it merely because an optional field is empty. Preserve it when facts
+are uncertain; clear it when the worker confirms review is complete or explicitly
+states that no further checks, work, or follow-up remain.
 Only clear leftOpen when closure is confirmed. Never combine done with leftOpen
 true. A done task MAY still have handoffReviewRequired true.
 
@@ -510,10 +544,13 @@ def _reconciliation_issues(
     ):
         # Flag semantics are explicit in the repair instruction. Do not silently
         # turn completion into a review acknowledgment if review was not discussed.
-        if not re.search(r"\breview(?:ed|ing)?\b", latest_facts, re.IGNORECASE):
+        if not _no_remaining_work(latest_facts) and not re.search(
+            r"\b(?:review(?:ed|ing)?|no (?:further )?follow.up)\b",
+            latest_facts, re.IGNORECASE,
+        ):
             issues.append(
                 "Completion does not clear handoffReviewRequired. Preserve it "
-                "unless the worker explicitly confirmed handoff review."
+                "unless the worker confirmed review or no remaining follow-up."
             )
     return issues
 

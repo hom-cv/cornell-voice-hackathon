@@ -47,40 +47,32 @@ Ask safety-related questions only when a recorded condition makes a missing fact
 relevant. Do not turn the review into a generic safety checklist or invent hazards.
 
 QUESTION STYLE:
-Refer to fields by their exact visible form labels, never internal JSON names:
-found -> "What was found"; workDone -> "What was done";
-stoppedAt -> "Exact stopping point"; nextAction -> "Next action";
-status -> "Status"; area -> "Location / area";
-manualReference -> "Manual / checklist reference".
-Name the field you want clarified and ask for its missing information. When
-comparing fields, name both labels instead of saying "the notes". Never use raw
-keys like workDone or stoppedAt in a question. Focus on the inspection itself,
-not an administrative record merely because a field mentions opening one.
-Opening a follow-up record and a pending check result can both be true; do not
-present them as a contradiction. For example, ask:
-'For "What was found", what is the warning-check result now?'
-Only ask this if the result is actually unclear from the whole task.
-Ask at most THREE questions total in ONE round, fewer when fewer useful gaps exist.
-Each question must be about one specific gap on a supplied task. Name the recorded
-component or quote a short vague phrase, then ask for the missing detail. Use plain
-language and make it easy to answer in one or two spoken sentences. Do not bundle
-unrelated checks into a long question. Avoid generic "Can you clarify this task?",
-"Is everything safe?", or "Are all procedures followed?". Avoid yes/no questions
-when the needed answer is a description. Do not repeat the same gap in two questions.
+Ask at most THREE short questions in ONE round. Write like a supervisor speaking
+with a colleague, not auditing a form. Lead directly with the missing fact.
+Aim for one sentence under 20 words. Do not narrate your comparison of fields,
+quote whole notes, or start with 'For Exact stopping point...' or 'The notes say'.
+The UI shows the task title and offers saved field details separately. If a field
+must be named, use its visible label, never workDone/stoppedAt or other JSON keys.
+Ask about the actual inspection rather than an administrative record. A pending
+result and an opened follow-up record can both be true, not a contradiction.
+A vague action word such as 'Refastening' does not establish completed work.
+Ask how far the work got rather than claiming two fields contradict each other.
+Make it easy to answer in a short spoken sentence. A brief either/or question is
+useful when it resolves the uncertainty; do not bundle unrelated checks together.
 
 EXAMPLES (patterns only; never copy their facts into another task):
-- Work done: "Checked the light", with no result elsewhere:
-  'For "What was found", what did you find when you checked the light?'
-- Stopping point: "Halfway through the seats", no specific progress recorded:
-  'For "Exact stopping point", which seats have been checked so far?'
-- Next action: "Waiting for parts", no part identified elsewhere:
-  'For "Next action", which part are you waiting for?'
-- Work done: "Cover replaced"; stopping point: "Replacement not started":
-  '"What was done" says the cover was replaced, but "Exact stopping point" says
-   replacement has not started. What condition is the cover in now?'
-- Work done: "Replaced the right landing light and reinstalled the screws",
-  status done, no remaining action or contradictory detail: do not ask the operator
-  to repeat the replacement steps or invent a missing test requirement.
+- Work done 'Refastening'; stopping point 'Refastening pending for next shift':
+  'Have the screws been tightened, or is that still for the next shift?'
+- 'Checked the light', with no result elsewhere:
+  'What did the light check show?'
+- 'Halfway through the seats', no specific progress recorded:
+  'Which seats are finished, and where should the next shift start?'
+- 'Waiting for parts', with no part identified elsewhere:
+  'Which part are you waiting for?'
+- Cover replaced vs replacement not started:
+  'Has the cover been replaced yet?'
+- Replaced the right landing light and reinstalled screws, status done, no real
+contradiction: do not ask for repeated steps or invent a missing test requirement.
 
 WHEN NOT TO ASK:
 A blank field alone is not a problem. Completed tasks can have no stopping point
@@ -111,7 +103,7 @@ are blank. All taskIds must come from the supplied tasks.
 
 STATUS_LABELS = {
     "not_started": "Not started",
-    "open": "Carried over · review required",
+    "open": "Needs follow-up",
     "in_progress": "In progress",
     "blocked": "Blocked",
     "done": "Done",
@@ -307,8 +299,11 @@ def build_report(
         f"Not done: {sum(item.status != 'done' for item in board.items)}",
         "Physical conditions flagged open: "
         f"{sum(item.left_open for item in board.items)}",
-        "Carried-over tasks still flagged for handoff review: "
-        f"{sum(item.handoff_review_required for item in board.items)}",
+        "Tasks needing follow-up: "
+        + str(sum(
+            item.status != "done" or item.handoff_review_required or item.left_open
+            for item in board.items
+        )),
         "",
         "HOW TO READ THIS HANDOFF",
         (
@@ -335,8 +330,9 @@ def build_report(
             f"Owner: {names.get(item.assignee_id, 'Unassigned')}",
             f"Saved status: {STATUS_LABELS[item.status]}",
             "Physical condition flagged open: " + ("Yes" if item.left_open else "No"),
-            "Handoff review still required: "
-            + ("Yes" if item.handoff_review_required else "No"),
+            "Needs follow-up: "
+            + ("Yes" if item.status != "done" or item.handoff_review_required
+               or item.left_open else "No"),
             f"Finding: {item.found or 'Not recorded.'}",
             f"Work performed: {item.work_done or 'Not recorded.'}",
             f"Current stopping point: {item.stopped_at or 'Not recorded.'}",

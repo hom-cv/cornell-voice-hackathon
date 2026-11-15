@@ -135,3 +135,20 @@ class Handoff(Base):
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class HandoffPreview(Base):
+    __tablename__ = "handoff_previews"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    aircraft_registration: Mapped[str] = mapped_column(
+        ForeignKey("aircraft.registration", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    board_hash: Mapped[str] = mapped_column(String(64))
+    answers: Mapped[list] = mapped_column(JSON)
+    candidates: Mapped[dict] = mapped_column(JSON)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    handoff_id: Mapped[str | None] = mapped_column(
+        ForeignKey("handoffs.id", ondelete="RESTRICT")
+    )

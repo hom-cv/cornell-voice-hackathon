@@ -7,6 +7,7 @@ from pydantic.alias_generators import to_camel
 from app.schemas.aircraft import AircraftOut
 from app.schemas.auth import EmployeeOut
 from app.schemas.board import WorkItemOut
+from app.schemas.capture import CaptureDraft
 
 
 class HandoffQuestion(BaseModel):
@@ -122,3 +123,35 @@ class HandoffAnswersTextOut(BaseModel):
         min_length=1, max_length=3
     )
     transcript: str
+
+
+class HandoffStartInput(HandoffReportInput):
+    model_config = ConfigDict(
+        alias_generator=to_camel, populate_by_name=True, extra="forbid"
+    )
+    preview_id: str | None = Field(default=None, min_length=1, max_length=36)
+
+
+class HandoffTaskChange(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+    task_id: str
+    title: str
+    before: CaptureDraft
+    after: CaptureDraft
+
+
+class HandoffPreviewOut(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+    preview_id: str
+    changes: list[HandoffTaskChange]
+    expires_at: datetime
+
+
+class HandoffSummary(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+    id: str
+    outgoing: EmployeeOut
+    incoming: EmployeeOut | None
+    status: Literal["draft", "confirmed", "completed"]
+    created_at: datetime
+    completed_at: datetime | None

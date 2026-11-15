@@ -24,7 +24,15 @@ def aircraft_summaries(aircraft: list[Aircraft], db: Session) -> list[AircraftOu
                 select(
                     WorkItem.aircraft_registration,
                     func.sum(
-                        case((WorkItem.handoff_review_required.is_(True), 1), else_=0)
+                        case(
+                            (
+                                (WorkItem.status != "done")
+                                | WorkItem.handoff_review_required.is_(True)
+                                | WorkItem.left_open.is_(True),
+                                1,
+                            ),
+                            else_=0,
+                        )
                     ).label("handoff"),
                     func.count().label("total"),
                     func.sum(case((WorkItem.status == "done", 1), else_=0)).label(
@@ -148,7 +156,12 @@ def get_board(
                 "total_items": len(items),
                 "completed_items": sum(item.status == "done" for item in items),
                 "open_items": sum(item.left_open for item in items),
-                "handoff_items": sum(item.handoff_review_required for item in items),
+                "handoff_items": sum(
+                    item.status != "done"
+                    or item.handoff_review_required
+                    or item.left_open
+                    for item in items
+                ),
             }
         ),
         items=[WorkItemOut.model_validate(item) for item in items],

@@ -9,10 +9,13 @@ from app.schemas.handoff import (
     HandoffAcknowledgeInput,
     HandoffAnswersTextInput,
     HandoffAnswersTextOut,
+    HandoffPreviewOut,
     HandoffRecord,
     HandoffReportInput,
     HandoffReportOut,
     HandoffReviewOut,
+    HandoffStartInput,
+    HandoffSummary,
     HandoffVerifyInput,
 )
 from app.services import handover
@@ -60,11 +63,30 @@ def generate_handoff_report(
 )
 async def start_handover(
     registration: str,
-    body: HandoffReportInput,
+    body: HandoffStartInput,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     return await handover.start_handoff(registration, body, user, db)
+
+
+@router.post("/{registration}/handoff/preview", response_model=HandoffPreviewOut)
+async def preview_handover(
+    registration: str,
+    body: HandoffReportInput,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return await handover.preview_handoff(registration, body, user, db)
+
+
+@router.get("/{registration}/handoff", response_model=list[HandoffSummary])
+def handover_history(
+    registration: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return handover.list_handoffs(registration, user, db)
 
 
 @router.get("/{registration}/handoff/{handoff_id}", response_model=HandoffRecord)
